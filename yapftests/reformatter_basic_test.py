@@ -43,6 +43,8 @@ class BasicReformatterTest(yapf_test_helper.YAPFTest):
               "whatever": 120
           }
           """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
     unformatted_code = textwrap.dedent("""\
           def foo(long_arg, really_long_arg, really_really_long_arg, cant_keep_all_these_args):
                 pass
@@ -74,6 +76,116 @@ class BasicReformatterTest(yapf_test_helper.YAPFTest):
           """)
     expected_formatted_code = textwrap.dedent("""\
           foo_tuple = [short, arg]
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+    # There is a test for split_all_top_level_comma_separated_values, with
+    # different expected value
+    unformatted_code = textwrap.dedent("""\
+          someLongFunction(this_is_a_very_long_parameter,
+              abc=(a, this_will_just_fit_xxxxxxx))
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          someLongFunction(
+              this_is_a_very_long_parameter,
+              abc=(a,
+                   this_will_just_fit_xxxxxxx))
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+
+  def testSplittingTopLevelAllArgs(self):
+    style.SetGlobalStyle(
+        style.CreateStyleFromConfig(
+            '{split_all_top_level_comma_separated_values: true, column_limit: 40}'
+        ))
+    # Works the same way as split_all_comma_separated_values
+    unformatted_code = textwrap.dedent("""\
+          responseDict = {"timestamp": timestamp, "someValue":   value, "whatever": 120}
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          responseDict = {
+              "timestamp": timestamp,
+              "someValue": value,
+              "whatever": 120
+          }
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+    # Works the same way as split_all_comma_separated_values
+    unformatted_code = textwrap.dedent("""\
+          def foo(long_arg, really_long_arg, really_really_long_arg, cant_keep_all_these_args):
+                pass
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          def foo(long_arg,
+                  really_long_arg,
+                  really_really_long_arg,
+                  cant_keep_all_these_args):
+            pass
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+    # Works the same way as split_all_comma_separated_values
+    unformatted_code = textwrap.dedent("""\
+          foo_tuple = [long_arg, really_long_arg, really_really_long_arg, cant_keep_all_these_args]
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          foo_tuple = [
+              long_arg,
+              really_long_arg,
+              really_really_long_arg,
+              cant_keep_all_these_args
+          ]
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+    # Works the same way as split_all_comma_separated_values
+    unformatted_code = textwrap.dedent("""\
+          foo_tuple = [short, arg]
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          foo_tuple = [short, arg]
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+    # There is a test for split_all_comma_separated_values, with different
+    # expected value
+    unformatted_code = textwrap.dedent("""\
+          someLongFunction(this_is_a_very_long_parameter,
+              abc=(a, this_will_just_fit_xxxxxxx))
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          someLongFunction(
+              this_is_a_very_long_parameter,
+              abc=(a, this_will_just_fit_xxxxxxx))
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    actual_formatted_code = reformatter.Reformat(uwlines)
+    self.assertEqual(40, len(actual_formatted_code.splitlines()[-1]))
+    self.assertCodeEqual(expected_formatted_code, actual_formatted_code)
+
+    unformatted_code = textwrap.dedent("""\
+          someLongFunction(this_is_a_very_long_parameter,
+              abc=(a, this_will_not_fit_xxxxxxxxx))
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          someLongFunction(
+              this_is_a_very_long_parameter,
+              abc=(a,
+                   this_will_not_fit_xxxxxxxxx))
+          """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
+
+    # Exercise the case where there's no opening bracket (for a, b)
+    unformatted_code = textwrap.dedent("""\
+          a, b = f(
+              a_very_long_parameter, yet_another_one, and_another)
+          """)
+    expected_formatted_code = textwrap.dedent("""\
+          a, b = f(
+              a_very_long_parameter, yet_another_one, and_another)
           """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
     self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
@@ -729,6 +841,13 @@ xxxxxxxxxxx, yyyyyyyyyyyy, vvvvvvvvv)
     uwlines = yapf_test_helper.ParseAndUnwrap(code)
     self.assertCodeEqual(code, reformatter.Reformat(uwlines))
 
+  def testSpaceBetweenStringAndParentheses(self):
+    code = textwrap.dedent("""\
+        b = '0' ('hello')
+        """)
+    uwlines = yapf_test_helper.ParseAndUnwrap(code)
+    self.assertCodeEqual(code, reformatter.Reformat(uwlines))
+
   def testMultilineString(self):
     code = textwrap.dedent("""\
         code = textwrap.dedent('''\
@@ -1255,10 +1374,9 @@ s = 'foo \\
         a = foo.bar({'xxxxxxxxxxxxxxxxxxxxxxx' 'yyyyyyyyyyyyyyyyyyyyyyyyyy': baz[42]} + 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' 'bbbbbbbbbbbbbbbbbbbbbbbbbb' 'cccccccccccccccccccccccccccccccc' 'ddddddddddddddddddddddddddddd')
         """)
     expected_formatted_code = textwrap.dedent("""\
-        a = foo.bar({
-            'xxxxxxxxxxxxxxxxxxxxxxx'
-            'yyyyyyyyyyyyyyyyyyyyyyyyyy': baz[42]
-        } + 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        a = foo.bar({'xxxxxxxxxxxxxxxxxxxxxxx'
+                     'yyyyyyyyyyyyyyyyyyyyyyyyyy': baz[42]} +
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
                     'bbbbbbbbbbbbbbbbbbbbbbbbbb'
                     'cccccccccccccccccccccccccccccccc'
                     'ddddddddddddddddddddddddddddd')
@@ -1340,7 +1458,7 @@ s = 'foo \\
                 return True
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testDictSetGenerator(self):
     code = textwrap.dedent("""\
@@ -1890,8 +2008,8 @@ class A(object):
               if True:
                 if True:
                   if True:
-                    boxes[id_] = np.concatenate((points.min(axis=0),
-                                                 qoints.max(axis=0)))
+                    boxes[id_] = np.concatenate(
+                        (points.min(axis=0), qoints.max(axis=0)))
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
     self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
@@ -2196,7 +2314,7 @@ class A(object):
              not True)
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testNamedAssignNotAtEndOfLine(self):
     unformatted_code = textwrap.dedent("""\
@@ -2214,7 +2332,7 @@ class A(object):
               pass
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testBlankLineBeforeClassDocstring(self):
     unformatted_code = textwrap.dedent('''\
@@ -2239,7 +2357,7 @@ class A(object):
             pass
         ''')
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
     try:
       style.SetGlobalStyle(
@@ -2295,7 +2413,7 @@ class A(object):
           pass
         ''')
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
     try:
       style.SetGlobalStyle(
@@ -2340,7 +2458,7 @@ class A(object):
               ('a string that may be too long %s' % 'M15'))
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testSubscriptExpression(self):
     code = textwrap.dedent("""\
@@ -2374,7 +2492,7 @@ class A(object):
           ]
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testEllipses(self):
     unformatted_code = textwrap.dedent("""\
@@ -2386,7 +2504,7 @@ class A(object):
         Y = X if ... else X
         """)
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testPseudoParens(self):
     unformatted_code = """\
@@ -2404,7 +2522,7 @@ my_dict = {
 }
 """
     uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
-    self.assertEqual(expected_code, reformatter.Reformat(uwlines))
+    self.assertCodeEqual(expected_code, reformatter.Reformat(uwlines))
 
   def testSplittingBeforeFirstArgumentOnFunctionCall(self):
     """Tests split_before_first_argument on a function call."""
@@ -2591,6 +2709,228 @@ x = [1, 2, 3, 4, 5, 6, 7,]
                            reformatter.Reformat(uwlines))
     finally:
       style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testIndentClosingBracketsWithTypeAnnotationExceedingLineLength(self):
+    try:
+      style.SetGlobalStyle(
+          style.CreateStyleFromConfig('{based_on_style: chromium,'
+                                      ' indent_closing_brackets: True}'))
+      unformatted_code = textwrap.dedent("""\
+                def function(first_argument_xxxxxxxxxxxxxxxx=(0,), second_argument=None) -> None:
+                  pass
+
+
+                def function(first_argument_xxxxxxxxxxxxxxxxxxxxxxx=(0,), second_argument=None) -> None:
+                  pass
+                """)
+      expected_formatted_code = textwrap.dedent("""\
+                def function(
+                    first_argument_xxxxxxxxxxxxxxxx=(0,), second_argument=None
+                    ) -> None:
+                  pass
+
+
+                def function(
+                    first_argument_xxxxxxxxxxxxxxxxxxxxxxx=(0,), second_argument=None
+                    ) -> None:
+                  pass
+                """)
+      uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+      self.assertCodeEqual(expected_formatted_code,
+                           reformatter.Reformat(uwlines))
+    finally:
+      style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testIndentClosingBracketsInFunctionCall(self):
+    try:
+      style.SetGlobalStyle(
+          style.CreateStyleFromConfig('{based_on_style: chromium,'
+                                      ' indent_closing_brackets: True}'))
+      unformatted_code = textwrap.dedent("""\
+                def function(first_argument_xxxxxxxxxxxxxxxx=(0,), second_argument=None, third_and_final_argument=True):
+                  pass
+
+
+                def function(first_argument_xxxxxxxxxxxxxxxxxxxxxxx=(0,), second_and_last_argument=None):
+                  pass
+                """)
+      expected_formatted_code = textwrap.dedent("""\
+                def function(
+                    first_argument_xxxxxxxxxxxxxxxx=(0,),
+                    second_argument=None,
+                    third_and_final_argument=True
+                    ):
+                  pass
+
+
+                def function(
+                    first_argument_xxxxxxxxxxxxxxxxxxxxxxx=(0,), second_and_last_argument=None
+                    ):
+                  pass
+                """)
+      uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+      self.assertCodeEqual(expected_formatted_code,
+                           reformatter.Reformat(uwlines))
+    finally:
+      style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testIndentClosingBracketsInTuple(self):
+    try:
+      style.SetGlobalStyle(
+          style.CreateStyleFromConfig('{based_on_style: chromium,'
+                                      ' indent_closing_brackets: True}'))
+      unformatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = ('a long element', 'another long element', 'short element', 'really really long element')
+                  return True
+
+                def function():
+                  some_var = ('a couple', 'small', 'elemens')
+                  return False
+                """)
+      expected_formatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = (
+                      'a long element', 'another long element', 'short element',
+                      'really really long element'
+                      )
+                  return True
+
+
+                def function():
+                  some_var = ('a couple', 'small', 'elemens')
+                  return False
+                """)
+      uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+      self.assertCodeEqual(expected_formatted_code,
+                           reformatter.Reformat(uwlines))
+    finally:
+      style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testIndentClosingBracketsInList(self):
+    try:
+      style.SetGlobalStyle(
+          style.CreateStyleFromConfig('{based_on_style: chromium,'
+                                      ' indent_closing_brackets: True}'))
+      unformatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = ['a long element', 'another long element', 'short element', 'really really long element']
+                  return True
+
+                def function():
+                  some_var = ['a couple', 'small', 'elemens']
+                  return False
+                """)
+      expected_formatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = [
+                      'a long element', 'another long element', 'short element',
+                      'really really long element'
+                      ]
+                  return True
+
+
+                def function():
+                  some_var = ['a couple', 'small', 'elemens']
+                  return False
+                """)
+      uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+      self.assertCodeEqual(expected_formatted_code,
+                           reformatter.Reformat(uwlines))
+    finally:
+      style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testIndentClosingBracketsInDict(self):
+    try:
+      style.SetGlobalStyle(
+          style.CreateStyleFromConfig('{based_on_style: chromium,'
+                                      ' indent_closing_brackets: True}'))
+      unformatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = {1: ('a long element', 'and another really really long element that is really really amazingly long'), 2: 'another long element', 3: 'short element', 4: 'really really long element'}
+                  return True
+
+                def function():
+                  some_var = {1: 'a couple', 2: 'small', 3: 'elemens'}
+                  return False
+                """)
+      expected_formatted_code = textwrap.dedent("""\
+                def function():
+                  some_var = {
+                      1:
+                          (
+                              'a long element',
+                              'and another really really long element that is really really amazingly long'
+                              ),
+                      2: 'another long element',
+                      3: 'short element',
+                      4: 'really really long element'
+                      }
+                  return True
+
+
+                def function():
+                  some_var = {1: 'a couple', 2: 'small', 3: 'elemens'}
+                  return False
+                """)
+      uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+      self.assertCodeEqual(expected_formatted_code,
+                           reformatter.Reformat(uwlines))
+    finally:
+      style.SetGlobalStyle(style.CreateChromiumStyle())
+
+  def testMultipleDictionariesInList(self):
+    unformatted_code = """\
+class A:
+    def b():
+        d = {
+            "123456": [
+                {
+                    "12": "aa"
+                },
+                {
+                    "12": "bb"
+                },
+                {
+                    "12": "cc",
+                    "1234567890": {
+                        "1234567": [{
+                            "12": "dd",
+                            "12345": "text 1"
+                        }, {
+                            "12": "ee",
+                            "12345": "text 2"
+                        }]
+                    }
+                }
+            ]
+        }
+"""
+    expected_formatted_code = """\
+class A:
+
+  def b():
+    d = {
+        "123456": [{
+            "12": "aa"
+        }, {
+            "12": "bb"
+        }, {
+            "12": "cc",
+            "1234567890": {
+                "1234567": [{
+                    "12": "dd",
+                    "12345": "text 1"
+                }, {
+                    "12": "ee",
+                    "12345": "text 2"
+                }]
+            }
+        }]
+    }
+"""
+    uwlines = yapf_test_helper.ParseAndUnwrap(unformatted_code)
+    self.assertCodeEqual(expected_formatted_code, reformatter.Reformat(uwlines))
 
 
 if __name__ == '__main__':

@@ -32,16 +32,50 @@ LF = '\n'
 CRLF = '\r\n'
 
 
-def GetDefaultStyleForDir(dirname):
+def _GetExcludePatternsFromFile(filename):
+  """Get a list of file patterns to ignore."""
+  ignore_patterns = []
+  # See if we have a .yapfignore file.
+  if os.path.isfile(filename) and os.access(filename, os.R_OK):
+    with open(filename, 'r') as fd:
+      for line in fd:
+        if line.strip() and not line.startswith('#'):
+          ignore_patterns.append(line.strip())
+
+    if any(e.startswith('./') for e in ignore_patterns):
+      raise errors.YapfError('path in .yapfignore should not start with ./')
+
+  return ignore_patterns
+
+
+def GetExcludePatternsForDir(dirname):
+  """Return patterns of files to exclude from ignorefile in a given directory.
+
+  Looks for .yapfignore in the directory dirname.
+
+  Arguments:
+    dirname: (unicode) The name of the directory.
+
+  Returns:
+    A List of file patterns to exclude if ignore file is found, otherwise empty
+    List.
+  """
+  ignore_file = os.path.join(dirname, '.yapfignore')
+  return _GetExcludePatternsFromFile(ignore_file)
+
+
+def GetDefaultStyleForDir(dirname, default_style=style.DEFAULT_STYLE):
   """Return default style name for a given directory.
 
   Looks for .style.yapf or setup.cfg in the parent directories.
 
   Arguments:
     dirname: (unicode) The name of the directory.
+    default_style: The style to return if nothing is found. Defaults to the
+                   global default style ('pep8') unless otherwise specified.
 
   Returns:
-    The filename if found, otherwise return the global default (pep8).
+    The filename if found, otherwise return the default style.
   """
   dirname = os.path.abspath(dirname)
   while True:
@@ -52,23 +86,27 @@ def GetDefaultStyleForDir(dirname):
 
     # See if we have a setup.cfg file with a '[yapf]' section.
     config_file = os.path.join(dirname, style.SETUP_CONFIG)
-    if os.path.exists(config_file):
-      with open(config_file) as fd:
+    try:
+      fd = open(config_file)
+    except IOError:
+      pass  # It's okay if it's not there.
+    else:
+      with fd:
         config = py3compat.ConfigParser()
         config.read_file(fd)
         if config.has_section('yapf'):
           return config_file
 
-    dirname = os.path.dirname(dirname)
     if (not dirname or not os.path.basename(dirname) or
         dirname == os.path.abspath(os.path.sep)):
       break
+    dirname = os.path.dirname(dirname)
 
   global_file = os.path.expanduser(style.GLOBAL_STYLE)
   if os.path.exists(global_file):
     return global_file
 
-  return style.DEFAULT_STYLE
+  return default_style
 
 
 def GetCommandLineFiles(command_line_file_list, recursive, exclude):

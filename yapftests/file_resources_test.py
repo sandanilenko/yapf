@@ -36,18 +36,58 @@ def _restore_working_dir():
     os.chdir(curdir)
 
 
-class GetDefaultStyleForDirTest(unittest.TestCase):
+@contextlib.contextmanager
+def _exists_mocked_in_module(module, mock_implementation):
+  unmocked_exists = getattr(module, 'exists')
+  setattr(module, 'exists', mock_implementation)
+  try:
+    yield
+  finally:
+    setattr(module, 'exists', unmocked_exists)
 
-  def setUp(self):
+
+class GetExcludePatternsForDir(unittest.TestCase):
+
+  def setUp(self):  # pylint: disable=g-missing-super-call
     self.test_tmpdir = tempfile.mkdtemp()
 
-  def tearDown(self):
+  def tearDown(self):  # pylint: disable=g-missing-super-call
+    shutil.rmtree(self.test_tmpdir)
+
+  def _make_test_dir(self, name):
+    fullpath = os.path.normpath(os.path.join(self.test_tmpdir, name))
+    os.makedirs(fullpath)
+    return fullpath
+
+  def test_get_exclude_file_patterns(self):
+    local_ignore_file = os.path.join(self.test_tmpdir, '.yapfignore')
+    ignore_patterns = ['temp/**/*.py', 'temp2/*.py']
+    with open(local_ignore_file, 'w') as f:
+      f.writelines('\n'.join(ignore_patterns))
+
+    self.assertEqual(
+        sorted(file_resources.GetExcludePatternsForDir(self.test_tmpdir)),
+        sorted(ignore_patterns))
+
+
+class GetDefaultStyleForDirTest(unittest.TestCase):
+
+  def setUp(self):  # pylint: disable=g-missing-super-call
+    self.test_tmpdir = tempfile.mkdtemp()
+
+  def tearDown(self):  # pylint: disable=g-missing-super-call
     shutil.rmtree(self.test_tmpdir)
 
   def test_no_local_style(self):
     test_file = os.path.join(self.test_tmpdir, 'file.py')
     style_name = file_resources.GetDefaultStyleForDir(test_file)
     self.assertEqual(style_name, 'pep8')
+
+  def test_no_local_style_custom_default(self):
+    test_file = os.path.join(self.test_tmpdir, 'file.py')
+    style_name = file_resources.GetDefaultStyleForDir(
+        test_file, default_style='custom-default')
+    self.assertEqual(style_name, 'custom-default')
 
   def test_with_local_style(self):
     # Create an empty .style.yapf file in test_tmpdir
@@ -62,6 +102,43 @@ class GetDefaultStyleForDirTest(unittest.TestCase):
     self.assertEqual(style_file,
                      file_resources.GetDefaultStyleForDir(test_filename))
 
+  def test_setup_config(self):
+    # An empty setup.cfg file should not be used
+    setup_config = os.path.join(self.test_tmpdir, 'setup.cfg')
+    open(setup_config, 'w').close()
+
+    test_dir = os.path.join(self.test_tmpdir, 'dir1')
+    style_name = file_resources.GetDefaultStyleForDir(test_dir)
+    self.assertEqual(style_name, 'pep8')
+
+    # One with a '[yapf]' section should be used
+    with open(setup_config, 'w') as f:
+      f.write('[yapf]\n')
+    self.assertEqual(setup_config,
+                     file_resources.GetDefaultStyleForDir(test_dir))
+
+  def test_local_style_at_root(self):
+    # Test behavior of files located on the root, and under root.
+    rootdir = os.path.abspath(os.path.sep)
+    test_dir_at_root = os.path.join(rootdir, 'dir1')
+    test_dir_under_root = os.path.join(rootdir, 'dir1', 'dir2')
+
+    # Fake placing only a style file at the root by mocking `os.path.exists`.
+    style_file = os.path.join(rootdir, '.style.yapf')
+
+    def mock_exists_implementation(path):
+      return path == style_file
+
+    with _exists_mocked_in_module(file_resources.os.path,
+                                  mock_exists_implementation):
+      # Both files should find the style file at the root.
+      default_style_at_root = file_resources.GetDefaultStyleForDir(
+          test_dir_at_root)
+      self.assertEqual(style_file, default_style_at_root)
+      default_style_under_root = file_resources.GetDefaultStyleForDir(
+          test_dir_under_root)
+      self.assertEqual(style_file, default_style_under_root)
+
 
 def _touch_files(filenames):
   for name in filenames:
@@ -70,11 +147,11 @@ def _touch_files(filenames):
 
 class GetCommandLineFilesTest(unittest.TestCase):
 
-  def setUp(self):
+  def setUp(self):  # pylint: disable=g-missing-super-call
     self.test_tmpdir = tempfile.mkdtemp()
     self.old_dir = os.getcwd()
 
-  def tearDown(self):
+  def tearDown(self):  # pylint: disable=g-missing-super-call
     shutil.rmtree(self.test_tmpdir)
     os.chdir(self.old_dir)
 
@@ -255,10 +332,10 @@ class GetCommandLineFilesTest(unittest.TestCase):
 
 class IsPythonFileTest(unittest.TestCase):
 
-  def setUp(self):
+  def setUp(self):  # pylint: disable=g-missing-super-call
     self.test_tmpdir = tempfile.mkdtemp()
 
-  def tearDown(self):
+  def tearDown(self):  # pylint: disable=g-missing-super-call
     shutil.rmtree(self.test_tmpdir)
 
   def test_with_py_extension(self):
@@ -328,11 +405,11 @@ class BufferedByteStream(object):
 class WriteReformattedCodeTest(unittest.TestCase):
 
   @classmethod
-  def setUpClass(cls):
+  def setUpClass(cls):  # pylint: disable=g-missing-super-call
     cls.test_tmpdir = tempfile.mkdtemp()
 
   @classmethod
-  def tearDownClass(cls):
+  def tearDownClass(cls):  # pylint: disable=g-missing-super-call
     shutil.rmtree(cls.test_tmpdir)
 
   def test_write_to_file(self):

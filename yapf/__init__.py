@@ -32,13 +32,15 @@ import logging
 import os
 import sys
 
+from lib2to3.pgen2 import tokenize
+
 from yapf.yapflib import errors
 from yapf.yapflib import file_resources
 from yapf.yapflib import py3compat
 from yapf.yapflib import style
 from yapf.yapflib import yapf_api
 
-__version__ = '0.24.0'
+__version__ = '0.28.0'
 
 
 def main(argv):
@@ -62,17 +64,22 @@ def main(argv):
       action='store_true',
       help='show version number and exit')
 
-  diff_inplace_group = parser.add_mutually_exclusive_group()
-  diff_inplace_group.add_argument(
+  diff_inplace_quiet_group = parser.add_mutually_exclusive_group()
+  diff_inplace_quiet_group.add_argument(
       '-d',
       '--diff',
       action='store_true',
       help='print the diff for the fixed source')
-  diff_inplace_group.add_argument(
+  diff_inplace_quiet_group.add_argument(
       '-i',
       '--in-place',
       action='store_true',
       help='make changes to files in place')
+  diff_inplace_quiet_group.add_argument(
+      '-q',
+      '--quiet',
+      action='store_true',
+      help='output nothing and set return value')
 
   lines_recursive_group = parser.add_mutually_exclusive_group()
   lines_recursive_group.add_argument(
@@ -119,16 +126,16 @@ def main(argv):
       '-p',
       '--parallel',
       action='store_true',
-      help=('Run yapf in parallel when formatting multiple files. Requires '
+      help=('run yapf in parallel when formatting multiple files. Requires '
             'concurrent.futures in Python 2.X'))
   parser.add_argument(
       '-vv',
       '--verbose',
       action='store_true',
-      help='Print out file names while processing')
+      help='print out file names while processing')
 
   parser.add_argument(
-      'files', nargs='*', help='Reads from stdin when no files are specified.')
+      'files', nargs='*', help='reads from stdin when no files are specified.')
   args = parser.parse_args(argv[1:])
 
   if args.version:
@@ -147,7 +154,7 @@ def main(argv):
         print('#', line and ' ' or '', line, sep='')
       option_value = style.Get(option)
       if isinstance(option_value, set) or isinstance(option_value, list):
-        option_value = ', '.join(option_value)
+        option_value = ', '.join(map(str, option_value))
       print(option.lower(), '=', option_value, sep='')
       print()
     return 0
@@ -181,17 +188,28 @@ def main(argv):
       style_config = file_resources.GetDefaultStyleForDir(os.getcwd())
 
     source = [line.rstrip() for line in original_source]
-    reformatted_source, _ = yapf_api.FormatCode(
-        py3compat.unicode('\n'.join(source) + '\n'),
-        filename='<stdin>',
-        style_config=style_config,
-        lines=lines,
-        verify=args.verify)
+    source[0] = py3compat.removeBOM(source[0])
+
+    try:
+      reformatted_source, _ = yapf_api.FormatCode(
+          py3compat.unicode('\n'.join(source) + '\n'),
+          filename='<stdin>',
+          style_config=style_config,
+          lines=lines,
+          verify=args.verify)
+    except tokenize.TokenError as e:
+      raise errors.YapfError('%s:%s' % (e.args[1][0], e.args[0]))
+
     file_resources.WriteReformattedCode('<stdout>', reformatted_source)
     return 0
 
+  # Get additional exclude patterns from ignorefile
+  exclude_patterns_from_ignore_file = file_resources.GetExcludePatternsForDir(
+      os.getcwd())
+
   files = file_resources.GetCommandLineFiles(args.files, args.recursive,
-                                             args.exclude)
+                                             (args.exclude or []) +
+                                             exclude_patterns_from_ignore_file)
   if not files:
     raise errors.YapfError('Input filenames did not match any python files')
 
@@ -204,8 +222,9 @@ def main(argv):
       print_diff=args.diff,
       verify=args.verify,
       parallel=args.parallel,
+      quiet=args.quiet,
       verbose=args.verbose)
-  return 1 if changed and args.diff else 0
+  return 1 if changed and (args.diff or args.quiet) else 0
 
 
 def FormatFiles(filenames,
@@ -216,6 +235,7 @@ def FormatFiles(filenames,
                 print_diff=False,
                 verify=False,
                 parallel=False,
+                quiet=False,
                 verbose=False):
   """Format a list of files.
 
@@ -233,6 +253,7 @@ def FormatFiles(filenames,
       diff that turns the formatted source into reformatter source.
     verify: (bool) True if reformatted code should be verified for syntax.
     parallel: (bool) True if should format multiple files in parallel.
+    quiet: (bool) True if should output nothing.
     verbose: (bool) True if should print out filenames while processing.
 
   Returns:
@@ -246,15 +267,15 @@ def FormatFiles(filenames,
     with concurrent.futures.ProcessPoolExecutor(workers) as executor:
       future_formats = [
           executor.submit(_FormatFile, filename, lines, style_config,
-                          no_local_style, in_place, print_diff, verify, verbose)
-          for filename in filenames
+                          no_local_style, in_place, print_diff, verify, quiet,
+                          verbose) for filename in filenames
       ]
       for future in concurrent.futures.as_completed(future_formats):
         changed |= future.result()
   else:
     for filename in filenames:
       changed |= _FormatFile(filename, lines, style_config, no_local_style,
-                             in_place, print_diff, verify, verbose)
+                             in_place, print_diff, verify, quiet, verbose)
   return changed
 
 
@@ -265,8 +286,10 @@ def _FormatFile(filename,
                 in_place=False,
                 print_diff=False,
                 verify=False,
+                quiet=False,
                 verbose=False):
-  if verbose:
+  """Format an individual file."""
+  if verbose and not quiet:
     print('Reformatting %s' % filename)
   if style_config is None and not no_local_style:
     style_config = file_resources.GetDefaultStyleForDir(
@@ -280,10 +303,12 @@ def _FormatFile(filename,
         print_diff=print_diff,
         verify=verify,
         logger=logging.warning)
-    if not in_place and reformatted_code:
+    if not in_place and not quiet and reformatted_code:
       file_resources.WriteReformattedCode(filename, reformatted_code, encoding,
                                           in_place)
     return has_change
+  except tokenize.TokenError as e:
+    raise errors.YapfError('%s:%s:%s' % (filename, e.args[1][0], e.args[0]))
   except SyntaxError as e:
     e.filename = filename
     raise
